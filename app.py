@@ -1,18 +1,60 @@
 import streamlit as st
 import pandas as pd
-from utils.gemini_analyzer import analyze_image
+import time
 
-st.set_page_config(
-    page_title="Telecom Audit AI",
-    layout="wide"
+from google import genai
+from google.genai import types
+
+client = genai.Client(
+    api_key=st.secrets["GEMINI_API_KEY"]
 )
 
-st.title("📡 Telecom Audit AI")
+PROMPT = """
+You are a telecom field audit expert.
 
-site_id = st.text_input("Site ID")
+Analyze the image and provide:
+- Equipment detected
+- Battery status
+- Cabinet condition
+- Safety issues
+- Priority
+- Recommendations
+"""
+
+def analyze_image(image_bytes):
+
+    for _ in range(5):
+
+        try:
+
+            response = client.models.generate_content(
+                model="gemini-2.0-flash",
+                contents=[
+                    PROMPT,
+                    types.Part.from_bytes(
+                        data=image_bytes,
+                        mime_type="image/jpeg"
+                    )
+                ]
+            )
+
+            return response.text
+
+        except Exception as e:
+
+            if "503" in str(e):
+                time.sleep(10)
+                continue
+
+            return str(e)
+
+    return "Gemini busy"
+
+
+st.title("Telecom Audit AI")
 
 uploaded_files = st.file_uploader(
-    "Upload Site Images",
+    "Upload Images",
     type=["jpg", "jpeg", "png"],
     accept_multiple_files=True
 )
@@ -21,22 +63,18 @@ if uploaded_files:
 
     results = []
 
-    if st.button("Analyze All Images"):
+    if st.button("Analyze"):
 
-        progress = st.progress(0)
-
-        for idx, file in enumerate(uploaded_files):
+        for file in uploaded_files:
 
             result = analyze_image(
-                file.getvalue(),
-                file.name
+                file.getvalue()
             )
 
-            results.append(result)
-
-            progress.progress(
-                (idx + 1) / len(uploaded_files)
-            )
+            results.append({
+                "Image": file.name,
+                "Analysis": result
+            })
 
         df = pd.DataFrame(results)
 
