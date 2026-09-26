@@ -1,136 +1,99 @@
 import streamlit as st
-import pandas as pd
-import json
-import base64
-
+from google import genai
 from PIL import Image
-from openai import OpenAI
+import io
+import pandas as pd
+
+# -------------------------------------------------
+# Gemini Client
+# -------------------------------------------------
+
+client = genai.Client(
+    api_key=st.secrets["GEMINI_API_KEY"]
+)
+
+# -------------------------------------------------
+# Image Analysis Function
+# -------------------------------------------------
+
+def analyze_image(image_bytes):
+
+    image = Image.open(io.BytesIO(image_bytes))
+
+    prompt = """
+    You are a senior telecom field audit engineer.
+
+    Analyze the image and provide:
+
+    1. Equipment Detected
+    2. Cabinet Status
+    3. Battery Status
+    4. Power System Observations
+    5. Safety Issues
+    6. Housekeeping Issues
+    7. Severity (Low/Medium/High)
+    8. Recommended Corrective Actions
+
+    Return the result in a professional telecom audit format.
+    """
+
+    response = client.models.generate_content(
+        model="gemini-2.5-flash",
+        contents=[prompt, image]
+    )
+
+    return response.text
+
+
+# -------------------------------------------------
+# Streamlit UI
+# -------------------------------------------------
 
 st.set_page_config(
     page_title="Telecom Audit AI",
     layout="wide"
 )
 
-st.title("Telecom Audit AI")
+st.title("📡 Telecom Audit AI")
 
-client = OpenAI(
-    api_key=st.secrets["OPENAI_API_KEY"]
-)
-
-
-def analyze_image(image_bytes):
-
-    base64_image = base64.b64encode(
-        image_bytes
-    ).decode("utf-8")
-
-    prompt = """
-You are a Senior Telecom Field Auditor.
-
-Analyze this image.
-
-Identify:
-
-- Equipment Type
-- Vendor
-- Visible Readings
-- Observation
-- Severity
-- Recommendation
-
-Return ONLY JSON:
-
-{
-    "equipment":"",
-    "vendor":"",
-    "visible_readings":"",
-    "observation":"",
-    "severity":"",
-    "recommendation":""
-}
-"""
-
-    response = client.chat.completions.create(
-        model="gpt-4o",
-        messages=[
-            {
-                "role": "user",
-                "content": [
-                    {
-                        "type": "text",
-                        "text": prompt
-                    },
-                    {
-                        "type": "image_url",
-                        "image_url": {
-                            "url":
-                            f"data:image/jpeg;base64,{base64_image}"
-                        }
-                    }
-                ]
-            }
-        ],
-        temperature=0.1
-    )
-
-    return response.choices[0].message.content
-
+site_id = st.text_input("Site ID")
 
 uploaded_file = st.file_uploader(
-    "Upload Telecom Image",
+    "Upload Site Photo",
     type=["jpg", "jpeg", "png"]
 )
 
 if uploaded_file:
 
-    image = Image.open(uploaded_file)
+    st.image(uploaded_file, width=600)
 
-    st.image(
-        image,
-        use_container_width=True
-    )
+    if st.button("Analyze"):
 
-    if st.button("Analyze Image"):
-
-        with st.spinner("Analyzing..."):
+        with st.spinner("Analyzing image..."):
 
             result = analyze_image(
                 uploaded_file.getvalue()
             )
 
-        st.subheader("AI Result")
+        st.success("Analysis Complete")
 
-        st.code(result)
+        st.markdown(result)
 
-        try:
+        report_df = pd.DataFrame({
+            "Site ID": [site_id],
+            "Remarks": [result]
+        })
 
-            data = json.loads(result)
+        excel_file = "telecom_audit_report.xlsx"
 
-            df = pd.DataFrame([data])
+        report_df.to_excel(
+            excel_file,
+            index=False
+        )
 
-            st.dataframe(df)
-
-            excel_file = "Telecom_Report.xlsx"
-
-            df.to_excel(
-                excel_file,
-                index=False
-            )
-
-            with open(
-                excel_file,
-                "rb"
-            ) as f:
-
-                st.download_button(
-                    label="Download Excel",
-                    data=f,
-                    file_name=excel_file,
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                )
-
-        except Exception:
-
-            st.error(
-                "JSON parse failed"
+        with open(excel_file, "rb") as f:
+            st.download_button(
+                "📥 Download Excel Report",
+                f,
+                file_name=excel_file
             )
