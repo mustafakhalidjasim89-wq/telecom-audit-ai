@@ -133,4 +133,33 @@ def analyze_image(image_bytes):
                         data=image_bytes,
                         mime_type="image/jpeg"
                     )
- 
+                ]
+            )
+
+            return response.text
+
+        except Exception as e:
+
+            error_msg = str(e)
+
+            if "503" in error_msg:
+                time.sleep(10)
+                continue
+
+            return f"ERROR: {error_msg}"
+
+    return "Gemini service busy after multiple retries."
+
+# ====================================================
+# UI
+# ====================================================
+
+st.title("📡 Telecom Audit AI")
+
+site_id = st.text_input(
+    "Site ID",
+    placeholder="BAG2972"
+)
+
+uploaded_files = st.file_uploader(
+    "Upload Images or
