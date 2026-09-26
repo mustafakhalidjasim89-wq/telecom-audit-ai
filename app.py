@@ -54,8 +54,8 @@ def analyze_image(image_bytes):
 st.title("Telecom Audit AI")
 
 uploaded_files = st.file_uploader(
-    "Upload Images",
-    type=["jpg", "jpeg", "png"],
+    "Upload Images & pdf",
+    type=["jpg", "jpeg", "png", "pdf"],
     accept_multiple_files=True
 )
 
