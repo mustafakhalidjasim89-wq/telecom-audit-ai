@@ -1,98 +1,136 @@
 import streamlit as st
 import pandas as pd
-import time
 import fitz
-from PIL import Image
 import io
+import time
 
+from PIL import Image
 from google import genai
 from google.genai import types
+
+# ====================================================
+# CONFIG
+# ====================================================
+
+st.set_page_config(
+    page_title="Telecom Audit AI",
+    layout="wide"
+)
+
+# ====================================================
+# GEMINI
+# ====================================================
 
 client = genai.Client(
     api_key=st.secrets["GEMINI_API_KEY"]
 )
 
-PROMPT = """
-You are a telecom field audit expert.
+MODEL_NAME = "gemini-3.8-flash"
 
-Analyze the image and provide:
-- Equipment detected
-- Battery status
-- Cabinet condition
-- Safety issues
-- Priority
-- Recommendations
+PROMPT = """
+You are a Senior Telecom Field Audit Engineer.
+
+Analyze this telecom site image and provide:
+
+1. Equipment Detected
+2. Cabinet Type
+3. Cabinet Condition
+4. Battery Type
+5. Battery Condition
+6. Rectifier Status
+7. Power Issues
+8. Safety Issues
+9. Housekeeping Issues
+10. Severity (Low / Medium / High)
+11. Recommended Corrective Action
+
+Provide a professional telecom engineer assessment.
 """
+
+# ====================================================
+# IMAGE OPTIMIZATION
+# ====================================================
+
+def optimize_image(image_bytes):
+
+    img = Image.open(io.BytesIO(image_bytes))
+
+    if img.mode != "RGB":
+        img = img.convert("RGB")
+
+    img.thumbnail((1600, 1600))
+
+    buffer = io.BytesIO()
+
+    img.save(
+        buffer,
+        format="JPEG",
+        quality=85
+    )
+
+    return buffer.getvalue()
+
+# ====================================================
+# PDF TO IMAGES
+# ====================================================
+
+def pdf_to_images(pdf_bytes):
+
+    images = []
+
+    pdf = fitz.open(
+        stream=pdf_bytes,
+        filetype="pdf"
+    )
+
+    for page_num in range(len(pdf)):
+
+        page = pdf[page_num]
+
+        pix = page.get_pixmap(
+            matrix=fitz.Matrix(1.5, 1.5),
+            alpha=False
+        )
+
+        img = Image.frombytes(
+            "RGB",
+            [pix.width, pix.height],
+            pix.samples
+        )
+
+        buffer = io.BytesIO()
+
+        img.save(
+            buffer,
+            format="JPEG",
+            quality=85
+        )
+
+        images.append({
+            "page": page_num + 1,
+            "bytes": buffer.getvalue()
+        })
+
+    return images
+
+# ====================================================
+# GEMINI ANALYSIS
+# ====================================================
 
 def analyze_image(image_bytes):
 
-    for _ in range(5):
+    image_bytes = optimize_image(image_bytes)
+
+    for attempt in range(5):
 
         try:
 
             response = client.models.generate_content(
-                model="gemini-3.8-flash",
+                model=MODEL_NAME,
                 contents=[
                     PROMPT,
                     types.Part.from_bytes(
                         data=image_bytes,
                         mime_type="image/jpeg"
                     )
-                ]
-            )
-
-            return response.text
-
-        except Exception as e:
-
-            if "503" in str(e):
-                time.sleep(10)
-                continue
-
-            return str(e)
-
-    return "Gemini busy"
-
-
-st.title("Telecom Audit AI")
-
-uploaded_files = st.file_uploader(
-    "Upload Images & pdf",
-    type=["jpg", "jpeg", "png", "pdf"],
-    accept_multiple_files=True
-)
-
-if uploaded_files:
-
-    results = []
-
-    if st.button("Analyze"):
-
-        for file in uploaded_files:
-
-            result = analyze_image(
-                file.getvalue()
-            )
-
-            results.append({
-                "Image": file.name,
-                "Analysis": result
-            })
-
-        df = pd.DataFrame(results)
-
-        st.dataframe(df)
-
-        excel_file = "telecom_audit_report.xlsx"
-
-        df.to_excel(
-            excel_file,
-            index=False
-        )
-
-        with open(excel_file, "rb") as f:
-            st.download_button(
-                "Download Excel",
-                f,
-                file_name=excel_file
-            )
+ 
