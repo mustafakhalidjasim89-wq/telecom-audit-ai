@@ -5,3 +5,6 @@ pillow
 plotly
 requests
 openai
+google-genai
+Pillow
+streamlit
